@@ -1,11 +1,20 @@
 import { useState, useEffect } from "react";
 import type { FormEvent, ChangeEvent } from "react";
 import { useParams } from "react-router-dom";
-import {
-  profileSchema,
-  type ProfileType,
-  type ErrorType,
-} from "../../zod-schema/profileSchema";
+import { z } from "zod";
+
+// Zod Schema
+const profileSchema = z.object({
+  username: z.string().min(3, "Username minimal 3 karakter"),
+  email: z.string().email("Format email tidak valid"),
+  password: z.union([
+    z.string().min(6, "Password minimal 6 karakter"),
+    z.undefined(),
+  ]),
+});
+
+type ProfileType = z.infer<typeof profileSchema>;
+type ErrorType = Record<string, string>;
 
 export default function Profile() {
   const [profile, setProfile] = useState<ProfileType>({
@@ -13,8 +22,8 @@ export default function Profile() {
     email: "",
     password: undefined,
   });
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [message, setMessage] = useState<string>("");
   const [errors, setErrors] = useState<ErrorType>({});
   const { id } = useParams<{ id: string }>();
 
@@ -44,21 +53,28 @@ export default function Profile() {
     setProfile({ ...profile, [e.target.name]: e.target.value });
   };
 
+  const normalizeErrors = (zodError: z.ZodError): ErrorType => {
+    const errorObj: ErrorType = {};
+    zodError.errors.forEach((err) => {
+      if (err.path.length > 0) {
+        errorObj[err.path[0] as string] = err.message;
+      }
+    });
+    return errorObj;
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage("");
     setErrors({});
 
-    const result = profileSchema.safeParse(profile);
-    if (!result.success) {
-      const fieldErrors = Object.fromEntries(
-        result.error.errors.map((e) => [e.path[0] as string, e.message])
-      );
-      setErrors(fieldErrors);
-      return;
-    }
-
     try {
+      const validationResult = profileSchema.safeParse(profile);
+      if (!validationResult.success) {
+        setErrors(normalizeErrors(validationResult.error));
+        return;
+      }
+
       if (!id) throw new Error("User ID not found");
 
       const { password, ...updatedProfile } = profile;
